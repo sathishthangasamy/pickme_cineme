@@ -77,8 +77,6 @@ if not api_key:
 
 try:
     genai.configure(api_key=api_key)
-    # Initialize the model with system instruction.
-    # This model instance will be used to start new chat sessions.
     base_generative_model = genai.GenerativeModel(
         GEMINI_MODEL_NAME,
         system_instruction=SYSTEM_INSTRUCTION
@@ -92,19 +90,17 @@ except Exception as e:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [] # Stores dicts of {"role": "user/assistant", "content": "...", "sources": []}
 if "chat_session" not in st.session_state:
-    # Start a new chat session using the base model configured with system instructions
     st.session_state.chat_session = base_generative_model.start_chat(history=[])
 
 
 # Function to send message to AI and get response
 def get_ai_response(prompt_text):
     try:
-        # Send message using the existing chat session
-        # The tools config is part of generation_config
         response = st.session_state.chat_session.send_message(
             prompt_text,
             generation_config=genai.types.GenerationConfig(
-                tools=[genai.types.Tool(google_search_retrieval=genai.types.GoogleSearchRetrieval())] # Corrected line
+                # THIS IS THE CORRECTED PART: No 'disable_attribution' here.
+                tools=[genai.types.Tool(google_search_retrieval=genai.types.GoogleSearchRetrieval())]
             )
         )
         return response
@@ -137,29 +133,22 @@ mood_button_clicked_prompt = None
 for i, (mood_display, mood_prompt_text) in enumerate(MOOD_PROMPTS.items()):
     if cols[i].button(mood_display, key=f"mood_{i}", use_container_width=True):
         mood_button_clicked_prompt = mood_prompt_text
-        break # Process one mood click at a time
+        break 
 
 # Chat input
 user_typed_query = st.chat_input("Ask for a movie or series recommendation...")
 
-# Determine the actual prompt to process
 final_prompt_to_process = None
-is_mood_prompt = False
-
 if mood_button_clicked_prompt:
     final_prompt_to_process = mood_button_clicked_prompt
-    is_mood_prompt = True
 elif user_typed_query:
     final_prompt_to_process = user_typed_query
 
-# Process the prompt if there is one
 if final_prompt_to_process:
-    # Add user message to history and display it
     st.session_state.chat_history.append({"role": "user", "content": final_prompt_to_process})
     with st.chat_message("user"):
         st.markdown(final_prompt_to_process)
 
-    # Get AI response
     with st.chat_message("assistant"):
         with st.spinner("Pickme Cinime is thinking... 🤔"):
             ai_response_object = get_ai_response(final_prompt_to_process)
@@ -175,7 +164,6 @@ if final_prompt_to_process:
                 st.markdown(response_text)
                 assistant_message = {"role": "assistant", "content": response_text, "sources": []}
 
-                # Displaying sources from grounding
                 try:
                     if ai_response_object.candidates and ai_response_object.candidates[0].grounding_metadata:
                         grounding_meta = ai_response_object.candidates[0].grounding_metadata
@@ -188,13 +176,10 @@ if final_prompt_to_process:
                                     st.caption(f"{i+1}. {source_info['title']}: {source_info['uri']}")
                 except Exception as e_source:
                     st.warning(f"Could not retrieve sources: {str(e_source)}")
-
+                
                 st.session_state.chat_history.append(assistant_message)
-
-            else: # ai_response_object is None
+            else: 
                 error_message = "Sorry, I couldn't get a response. Please try again."
                 st.markdown(error_message)
                 st.session_state.chat_history.append({"role": "assistant", "content": error_message, "sources": []})
-    
-    # Rerun to clear input boxes and reflect the new state, especially after mood button.
     st.rerun()
